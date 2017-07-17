@@ -23,12 +23,12 @@ set -e -u -o pipefail
 # Packages needed by pacman (see get-pacman-dependencies.sh)
 PACMAN_PACKAGES=(
   acl archlinux-keyring attr bzip2 curl expat glibc gpgme libarchive
-  libassuan libgpg-error libssh2 lzo openssl pacman pacman-mirrorlist xz zlib
-  krb5 e2fsprogs keyutils libidn gcc-libs lz4
+  libassuan libgpg-error libnghttp2 libssh2 lzo openssl pacman pacman-mirrorlist xz zlib
+  krb5 e2fsprogs keyutils libidn gcc-libs lz4 libpsl icu
 )
 BASIC_PACKAGES=(${PACMAN_PACKAGES[*]} filesystem)
 EXTRA_PACKAGES=(coreutils bash grep gawk file tar systemd sed)
-DEFAULT_REPO_URL="https://mirrors.kernel.org/archlinux"
+DEFAULT_REPO_URL="http://mirrors.kernel.org/archlinux"
 DEFAULT_ARM_REPO_URL="http://mirror.archlinuxarm.org"
 
 stderr() { 
@@ -61,14 +61,18 @@ uncompress() {
   local FILEPATH=$1 DEST=$2
   
   case "$FILEPATH" in
-    *.gz) tar xzf "$FILEPATH" -C "$DEST";;
-    *.xz) xz -dc "$FILEPATH" | tar x -C "$DEST";;
-    *) debug "Error: unknown package format: $FILEPATH"
-       return 1;;
+    *.gz) 
+      tar xzf "$FILEPATH" -C "$DEST";;
+    *.xz) 
+      xz -dc "$FILEPATH" | tar x -C "$DEST";;
+    *) 
+      debug "Error: unknown package format: $FILEPATH"
+      return 1;;
   esac
 }  
 
 ###
+
 get_default_repo() {
   local ARCH=$1
   if [[ "$ARCH" == arm* ]]; then
@@ -111,11 +115,6 @@ configure_minimal_system() {
   sed -ie 's/^root:.*$/root:$1$GT9AUpJe$oXANVIjIzcnmOpY07iaGi\/:14657::::::/' $DEST/etc/shadow
   touch "$DEST/etc/group"
   echo "bootstrap" > "$DEST/etc/hostname"
-  
-  test -e "$DEST/etc/mtab" || echo "rootfs / rootfs rw 0 0" > "$DEST/etc/mtab"
-  test -e "$DEST/dev/null" || mknod "$DEST/dev/null" c 1 3
-  test -e "$DEST/dev/random" || mknod -m 0644 "$DEST/dev/random" c 1 8
-  test -e "$DEST/dev/urandom" || mknod -m 0644 "$DEST/dev/urandom" c 1 9
   
   sed -i "s/^[[:space:]]*\(CheckSpace\)/# \1/" "$DEST/etc/pacman.conf"
   sed -i "s/^[[:space:]]*SigLevel[[:space:]]*=.*$/SigLevel = Never/" "$DEST/etc/pacman.conf"
@@ -210,7 +209,11 @@ main() {
   configure_pacman "$DEST" "$ARCH" # Pacman must be re-configured
   [[ -z "$PRESERVE_DOWNLOAD_DIR" ]] && rm -rf "$DOWNLOAD_DIR"
   
-  debug "done"
+  debug "Done"
+  debug "Note: To use the system you may need to mount some special fileystems:"
+  debug "  # mount -t proc proc $DEST/proc/"
+  debug "  # mount -t sysfs sys $DEST/sys/"
+  debug "  # mount -o bind /dev $DEST/dev/"
 }
 
 main "$@"
