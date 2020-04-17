@@ -24,7 +24,7 @@ set -e -u -o pipefail
 PACMAN_PACKAGES=(
   acl archlinux-keyring attr bzip2 curl expat glibc gpgme libarchive
   libassuan libgpg-error libnghttp2 libssh2 lzo openssl pacman pacman-mirrorlist xz zlib
-  krb5 e2fsprogs keyutils libidn gcc-libs lz4 libpsl icu
+  krb5 e2fsprogs keyutils libidn2 libunistring gcc-libs lz4 libpsl icu libunistring zstd
 )
 BASIC_PACKAGES=(${PACMAN_PACKAGES[*]} filesystem)
 EXTRA_PACKAGES=(coreutils bash grep gawk file tar systemd sed)
@@ -75,7 +75,7 @@ uncompress() {
 
 get_default_repo() {
   local ARCH=$1
-  if [[ "$ARCH" == arm* ]]; then
+  if [[ "$ARCH" == arm* || "$ARCH" == aarch64 ]]; then
     echo $DEFAULT_ARM_REPO_URL
   else
     echo $DEFAULT_REPO_URL
@@ -84,7 +84,7 @@ get_default_repo() {
 
 get_core_repo_url() {
   local REPO_URL=$1 ARCH=$2
-  if [[ "$ARCH" == arm* ]]; then
+  if [[ "$ARCH" == arm* || "$ARCH" == aarch64 ]]; then
     echo "${REPO_URL%/}/$ARCH/core"
   else
     echo "${REPO_URL%/}/core/os/$ARCH"
@@ -93,8 +93,8 @@ get_core_repo_url() {
 
 get_template_repo_url() {
   local REPO_URL=$1 ARCH=$2
-  if [[ "$ARCH" == arm* ]]; then
-    echo "${REPO_URL%/}/$ARCH"
+  if [[ "$ARCH" == arm* || "$ARCH" == aarch64 ]]; then
+    echo "${REPO_URL%/}/$ARCH/\$repo"
   else
     echo "${REPO_URL%/}/\$repo/os/$ARCH"
   fi
@@ -105,17 +105,23 @@ configure_pacman() {
   debug "configure DNS and pacman"
   cp "/etc/resolv.conf" "$DEST/etc/resolv.conf"
   SERVER=$(get_template_repo_url "$REPO_URL" "$ARCH")
-  echo "Server = $SERVER" >> "$DEST/etc/pacman.d/mirrorlist"
+  echo "Server = $SERVER" > "$DEST/etc/pacman.d/mirrorlist"
 }
 
 configure_minimal_system() {
   local DEST=$1
   
   mkdir -p "$DEST/dev"
-  sed -ie 's/^root:.*$/root:$1$GT9AUpJe$oXANVIjIzcnmOpY07iaGi\/:14657::::::/' $DEST/etc/shadow
+  sed -ie 's/^root:.*$/root:$1$GT9AUpJe$oXANVIjIzcnmOpY07iaGi\/:14657::::::/' "$DEST/etc/shadow"
   touch "$DEST/etc/group"
   echo "bootstrap" > "$DEST/etc/hostname"
-  
+
+  rm -f "$DEST/etc/mtab"
+  echo "rootfs / rootfs rw 0 0" > "$DEST/etc/mtab"
+  test -e "$DEST/dev/null" || mknod "$DEST/dev/null" c 1 3
+  test -e "$DEST/dev/random" || mknod -m 0644 "$DEST/dev/random" c 1 8
+  test -e "$DEST/dev/urandom" || mknod -m 0644 "$DEST/dev/urandom" c 1 9
+
   sed -i "s/^[[:space:]]*\(CheckSpace\)/# \1/" "$DEST/etc/pacman.conf"
   sed -i "s/^[[:space:]]*SigLevel[[:space:]]*=.*$/SigLevel = Never/" "$DEST/etc/pacman.conf"
 }
@@ -209,11 +215,10 @@ main() {
   configure_pacman "$DEST" "$ARCH" # Pacman must be re-configured
   [[ -z "$PRESERVE_DOWNLOAD_DIR" ]] && rm -rf "$DOWNLOAD_DIR"
   
-  debug "Done"
-  debug "Note: To use the system you may need to mount some special fileystems:"
-  debug "  # mount -t proc proc $DEST/proc/"
-  debug "  # mount -t sysfs sys $DEST/sys/"
-  debug "  # mount -o bind /dev $DEST/dev/"
+  debug "Done!"
+  debug 
+  debug "You may now chroot or arch-chroot from package arch-install-scripts:"
+  debug "$ sudo arch-chroot $DEST"
 }
 
 main "$@"
